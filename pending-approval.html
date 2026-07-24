@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="pending_page_title">Ожидание одобрения — AB Kitchen</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./config/runtime-config.js"></script>
+</head>
+
+<body class="bg-base-200 min-h-screen flex items-center justify-center p-4">
+    <div class="card bg-base-100 shadow-xl max-w-lg w-full">
+        <div class="card-body text-center">
+            <div class="text-8xl mb-6">⏳</div>
+
+            <h2 class="card-title text-3xl justify-center mb-4" data-i18n="pending_title">Ожидайте одобрения</h2>
+
+            <p class="text-lg mb-4" data-i18n="pending_description">Ваша заявка на регистрацию отправлена администратору.</p>
+
+            <div class="alert alert-info">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div class="text-left">
+                    <p class="font-bold" data-i18n="pending_what_next">Что дальше?</p>
+                    <p class="text-sm" data-i18n="pending_what_next_hint">После одобрения заявки вы получите уведомление на email и сможете войти в систему.</p>
+                </div>
+            </div>
+
+            <div class="card-actions justify-center mt-6 gap-3">
+                <button class="btn btn-ghost" onclick="logout()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    <span data-i18n="pending_logout">Выйти</span>
+                </button>
+                <button class="btn btn-primary" onclick="checkStatus()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span data-i18n="pending_check_status">Проверить статус</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=4"></script>
+    <script>
+        const db = window.supabaseClient;
+
+        async function logout() {
+            await db.auth.signOut();
+            window.location.href = window.abkUrl('/login.html');
+        }
+
+        async function checkStatus() {
+            const btn = event.target;
+            const btnText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading loading-spinner loading-sm"></span> Проверка...';
+
+            try {
+                const { data: { session } } = await db.auth.getSession();
+
+                if (!session) {
+                    await logout();
+                    return;
+                }
+
+                const { data: vaishnava, error } = await db
+                    .from('vaishnavas')
+                    .select('approval_status')
+                    .eq('user_id', session.user.id)
+                    .single();
+
+                if (error) throw error;
+
+                if (vaishnava.approval_status === 'approved') {
+                    // Заявка одобрена! Перенаправляем
+                    alert('✅ Ваша заявка одобрена! Сейчас вы будете перенаправлены в систему.');
+                    window.location.href = window.abkUrl('/');
+                } else if (vaishnava.approval_status === 'rejected') {
+                    alert('❌ К сожалению, ваша заявка отклонена. Свяжитесь с администратором для уточнения деталей.');
+                } else if (vaishnava.approval_status === 'blocked') {
+                    alert('🚫 Ваш аккаунт заблокирован. Свяжитесь с администратором.');
+                } else {
+                    alert('⏳ Ваша заявка пока ещё на рассмотрении. Пожалуйста, ожидайте.');
+                }
+            } catch (err) {
+                console.error('Check status error:', err);
+                alert('Не удалось проверить статус. Попробуйте позже.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = btnText;
+            }
+        }
+
+        // Автоматическая проверка статуса каждые 10 секунд
+        let checkInterval = setInterval(async () => {
+            try {
+                const { data: { session } } = await db.auth.getSession();
+                if (!session) {
+                    clearInterval(checkInterval);
+                    return;
+                }
+
+                const { data: vaishnava } = await db
+                    .from('vaishnavas')
+                    .select('approval_status')
+                    .eq('user_id', session.user.id)
+                    .single();
+
+                if (vaishnava && vaishnava.approval_status === 'approved') {
+                    clearInterval(checkInterval);
+                    alert('✅ Ваша заявка одобрена! Перенаправляем вас в систему...');
+                    window.location.href = window.abkUrl('/');
+                }
+            } catch (err) {
+                // Игнорируем ошибки автопроверки
+                console.error('Auto-check error:', err);
+            }
+        }, 10000); // Каждые 10 секунд
+    </script>
+</body>
+
+</html>

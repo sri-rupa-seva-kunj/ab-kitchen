@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url=guest-portal/login/">
+    <title data-i18n="login_page_title">Вход — AB Kitchen</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+</head>
+<body>
+    <p><span data-i18n="login_redirecting">Перенаправление...</span> <a href="guest-portal/login/" data-i18n="login_click_here">Нажмите здесь</a>, <span data-i18n="login_if_not_redirected">если перенаправление не сработало.</span></p>
+    <script>
+        // Сохраняем параметры URL при редиректе
+        const params = window.location.search;
+        window.location.href = 'guest-portal/login/' + params;
+    </script>
+</body>
+</html>

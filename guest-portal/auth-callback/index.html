@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход | AB Kitchen</title>
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'srsk-green': '#147D30',
+                        'srsk-green-light': '#1a9e3d',
+                        'srsk-orange': '#FFBA47',
+                        'srsk-bg': '#F5F3EF'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../../config/runtime-config.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Portal CSS -->
+    <link rel="stylesheet" href="../css/portal.css">
+</head>
+<body class="bg-srsk-bg">
+
+    <div class="login-container">
+        <div class="login-card">
+            <div class="flex flex-col items-center gap-2 mb-4">
+                <span class="text-5xl" aria-hidden="true">🍳</span>
+                <span class="text-2xl font-bold">AB Kitchen</span>
+            </div>
+
+            <!-- Состояние загрузки -->
+            <div id="loading-state" class="text-center py-8">
+                <div class="w-12 h-12 border-4 border-srsk-green border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-gray-600" id="status-text" data-i18n="portal_logging_in">Выполняется вход...</p>
+            </div>
+
+            <!-- Состояние ошибки -->
+            <div id="error-state" class="hidden text-center py-8">
+                <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </div>
+                <p class="font-medium text-gray-900 mb-2" id="error-title" data-i18n="portal_login_error">Ошибка входа</p>
+                <p class="text-sm text-gray-500 mb-4" id="error-message" data-i18n="portal_login_failed">Не удалось выполнить вход</p>
+                <a href="../../login.html" class="inline-block px-4 py-2 bg-srsk-green text-white rounded-lg hover:bg-srsk-green-light transition-colors" data-i18n="portal_back_to_login_page">
+                    Вернуться на страницу входа
+                </a>
+            </div>
+
+            <!-- Состояние успеха (кратковременно перед редиректом) -->
+            <div id="success-state" class="hidden text-center py-8">
+                <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </div>
+                <p class="font-medium text-gray-900" data-i18n="portal_login_success">Вход выполнен!</p>
+                <p class="text-sm text-gray-500 mt-1" data-i18n="portal_redirecting_to_cabinet">Перенаправляем в личный кабинет...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../js/portal-config.js?v=3"></script>
+    <script src="../js/portal-auth.js"></script>
+    <script>
+        const db = window.portalSupabase;
+        const currentLang = localStorage.getItem('abk_lang') || 'ru';
+
+        // Переводы для callback-страницы
+        const callbackTranslations = {
+            cb_checking_auth: { ru: 'Проверка авторизации...', en: 'Checking authorization...', hi: 'प्राधिकरण की जाँच...' },
+            cb_linking_account: { ru: 'Связывание аккаунта...', en: 'Linking account...', hi: 'खाता लिंक हो रहा है...' },
+            cb_auth_error: { ru: 'Ошибка авторизации', en: 'Authorization error', hi: 'प्राधिकरण त्रुटि' },
+            cb_session_data_error: { ru: 'Не удалось получить данные сессии', en: 'Could not get session data', hi: 'सत्र डेटा प्राप्त नहीं हो सका' },
+            cb_session_not_found: { ru: 'Сессия не найдена', en: 'Session not found', hi: 'सत्र नहीं मिला' },
+            cb_link_expired: { ru: 'Ссылка устарела или недействительна. Попробуйте запросить новую.', en: 'Link expired or invalid. Try requesting a new one.', hi: 'लिंक समाप्त या अमान्य। एक नया अनुरोध करने का प्रयास करें।' },
+            cb_profile_not_found: { ru: 'Профиль не найден', en: 'Profile not found', hi: 'प्रोफ़ाइल नहीं मिला' },
+            cb_not_registered: { ru: 'Ваш email не зарегистрирован в системе. Пожалуйста, зарегистрируйтесь.', en: 'Your email is not registered. Please sign up.', hi: 'आपका ईमेल पंजीकृत नहीं है। कृपया साइन अप करें।' },
+            cb_register: { ru: 'Зарегистрироваться', en: 'Register', hi: 'पंजीकरण करें' },
+            cb_conflict: { ru: 'Конфликт аккаунтов', en: 'Account conflict', hi: 'खाता विरोध' },
+            cb_conflict_text: { ru: 'Этот email уже связан с другим аккаунтом. Обратитесь в поддержку.', en: 'This email is linked to another account. Contact support.', hi: 'यह ईमेल किसी अन्य खाते से जुड़ा है। सहायता से संपर्क करें।' },
+            cb_error: { ru: 'Ошибка', en: 'Error', hi: 'त्रुटि' },
+            cb_link_failed: { ru: 'Не удалось связать аккаунт. Попробуйте позже.', en: 'Could not link account. Try again later.', hi: 'खाता लिंक नहीं हो सका। बाद में पुनः प्रयास करें।' },
+            cb_general_error: { ru: 'Произошла ошибка', en: 'An error occurred', hi: 'एक त्रुटि हुई' },
+            cb_request_new_link: { ru: 'Попробуйте запросить новую ссылку для входа.', en: 'Try requesting a new login link.', hi: 'नया लॉगिन लिंक अनुरोध करने का प्रयास करें।' }
+        };
+
+        function tCb(key) {
+            const trans = callbackTranslations[key];
+            if (!trans) return key;
+            return trans[currentLang] || trans['en'] || trans['ru'] || key;
+        }
+
+        // Показать ошибку
+        function showError(title, message) {
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('success-state').classList.add('hidden');
+            document.getElementById('error-state').classList.remove('hidden');
+            document.getElementById('error-title').textContent = title;
+            document.getElementById('error-message').textContent = message;
+        }
+
+        // Показать успех
+        function showSuccess() {
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('error-state').classList.add('hidden');
+            document.getElementById('success-state').classList.remove('hidden');
+        }
+
+        // Обновить статус
+        function updateStatus(text) {
+            document.getElementById('status-text').textContent = text;
+        }
+
+        // Основная логика
+        async function handleCallback() {
+            try {
+                // Supabase автоматически обрабатывает hash из URL
+                // и устанавливает сессию
+                updateStatus(tCb('cb_checking_auth'));
+
+                // Даём время Supabase обработать токены из URL
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Проверяем сессию
+                const { data: { session }, error: sessionError } = await db.auth.getSession();
+
+                if (sessionError) {
+                    console.error('Session error:', sessionError);
+                    showError(tCb('cb_auth_error'), tCb('cb_session_data_error'));
+                    return;
+                }
+
+                if (!session) {
+                    showError(tCb('cb_session_not_found'), tCb('cb_link_expired'));
+                    return;
+                }
+
+                updateStatus(tCb('cb_linking_account'));
+
+                // Связываем auth user с vaishnava
+                const linkResult = await window.PortalAuth.linkAuthUserToVaishnava();
+
+                if (!linkResult.success) {
+                    console.error('Link failed:', linkResult.error);
+
+                    if (linkResult.error === 'not_found') {
+                        // Пользователь не зарегистрирован в системе
+                        // Выходим и отправляем на регистрацию
+                        await db.auth.signOut();
+                        showError(
+                            tCb('cb_profile_not_found'),
+                            tCb('cb_not_registered')
+                        );
+                        // Возвращаем на страницу входа.
+                        setTimeout(() => {
+                            const errorState = document.getElementById('error-state');
+                            const link = errorState.querySelector('a');
+                            link.href = window.abkUrl('/login.html');
+                            link.textContent = tCb('portal_back_to_login_page');
+                        }, 100);
+                        return;
+                    }
+
+                    if (linkResult.error === 'conflict') {
+                        showError(
+                            tCb('cb_conflict'),
+                            tCb('cb_conflict_text')
+                        );
+                        return;
+                    }
+
+                    showError(tCb('cb_error'), tCb('cb_link_failed'));
+                    return;
+                }
+
+                // Успех!
+                showSuccess();
+
+                // Получаем информацию о пользователе для редиректа
+                const { data: vaishnava } = await db
+                    .from('vaishnavas')
+                    .select('is_team')
+                    .eq('id', linkResult.vaishnavId)
+                    .single();
+
+                // Редирект в зависимости от типа пользователя
+                setTimeout(() => {
+                    window.location.href = window.abkUrl('/');
+                }, 1000);
+
+            } catch (error) {
+                console.error('Callback error:', error);
+                showError(tCb('cb_general_error'), tCb('cb_request_new_link'));
+            }
+        }
+
+        // Запуск
+        handleCallback();
+    </script>
+</body>
+</html>

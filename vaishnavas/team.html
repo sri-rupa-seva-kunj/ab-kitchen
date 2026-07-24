@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <script src="../js/color-init.js?v=2"></script>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Команда — AB Kitchen</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../config/runtime-config.js"></script>
+    <script>tailwind.config = { theme: { extend: { screens: { 'desktop': '1200px' } } } }</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/common.css?v=3">
+    <style>
+        .person-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: var(--current-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .sort-icon {
+            opacity: 0.3;
+            font-size: 0.75rem;
+            transition: opacity 0.2s;
+        }
+        .sort-icon.active {
+            opacity: 1;
+        }
+        th:hover .sort-icon {
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body class="bg-base-200 min-h-screen flex flex-col">
+
+    <div id="header-placeholder"></div>
+
+    <main class="container mx-auto px-4 py-6 flex-1">
+
+        <!-- Page Header -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h1 class="text-2xl font-bold" data-i18n="nav_vaishnavas_team">Команда</h1>
+            <button class="btn btn-primary gap-2" onclick="openAddModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                <span data-i18n="add">Добавить</span>
+            </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="flex flex-col sm:flex-row gap-4 mb-6 sm:items-center">
+            <div class="flex flex-wrap gap-2" id="filterButtons">
+                <button class="btn btn-sm filter-btn active btn-neutral" data-filter="all">
+                    <span data-i18n="filter_all">Все</span>
+                    <sup class="ml-1 opacity-60" id="countAll">0</sup>
+                </button>
+                <button class="btn btn-sm filter-btn btn-ghost" data-filter="present">
+                    <span data-i18n="filter_present">Здесь</span>
+                    <sup class="ml-1 opacity-60" id="countPresent">0</sup>
+                </button>
+            </div>
+            <div class="flex-1 max-w-md relative">
+                <input type="text" id="searchInput" class="input input-bordered w-full pr-10" data-i18n-placeholder="search" placeholder="Поиск...">
+                <button type="button" id="clearSearch" class="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- People Table -->
+        <div class="bg-base-100 rounded-xl shadow overflow-x-auto">
+            <table class="table table-zebra table-fixed w-full">
+                <thead>
+                    <tr>
+                        <th class="cursor-pointer hover:bg-base-200 select-none w-1/3" onclick="toggleSort('name')">
+                            <div class="flex items-center gap-1">
+                                <span data-i18n="name">Имя</span>
+                                <span class="sort-icon active" data-sort="name">↑</span>
+                            </div>
+                        </th>
+                        <th class="cursor-pointer hover:bg-base-200 select-none w-1/5" onclick="toggleSort('department')">
+                            <div class="flex items-center gap-1">
+                                <span data-i18n="department">Департамент</span>
+                                <span class="sort-icon" data-sort="department">↕</span>
+                            </div>
+                        </th>
+                        <th class="cursor-pointer hover:bg-base-200 select-none w-1/5" onclick="toggleSort('stay_status')">
+                            <div class="flex items-center gap-1">
+                                <span data-i18n="in_srsk">В ШРСК</span>
+                                <span class="sort-icon" data-sort="stay_status">↕</span>
+                            </div>
+                        </th>
+                        <th class="cursor-pointer hover:bg-base-200 select-none w-1/5" onclick="toggleSort('teacher')">
+                            <div class="flex items-center gap-1">
+                                <span data-i18n="spiritual_teacher">Дух. учитель</span>
+                                <span class="sort-icon" data-sort="teacher">↕</span>
+                            </div>
+                        </th>
+                        <th class="w-32" data-i18n="phone">Телефон</th>
+                        <th class="w-10"></th>
+                    </tr>
+                </thead>
+                <tbody id="peopleTable">
+                    <!-- Skeleton loader -->
+                    <tr class="skeleton-table-row"><td><div class="flex items-center gap-3"><div class="skeleton skeleton-avatar"></div><div class="flex-1"><div class="skeleton skeleton-text w-32 mb-1"></div><div class="skeleton skeleton-text-sm w-20"></div></div></div></td><td><div class="skeleton skeleton-text w-24"></div></td><td><div class="skeleton skeleton-text w-20"></div></td><td><div class="skeleton skeleton-text w-16"></div></td><td></td></tr>
+                    <tr class="skeleton-table-row"><td><div class="flex items-center gap-3"><div class="skeleton skeleton-avatar"></div><div class="flex-1"><div class="skeleton skeleton-text w-40 mb-1"></div><div class="skeleton skeleton-text-sm w-16"></div></div></div></td><td><div class="skeleton skeleton-text w-20"></div></td><td><div class="skeleton skeleton-text w-24"></div></td><td><div class="skeleton skeleton-text w-12"></div></td><td></td></tr>
+                    <tr class="skeleton-table-row"><td><div class="flex items-center gap-3"><div class="skeleton skeleton-avatar"></div><div class="flex-1"><div class="skeleton skeleton-text w-28 mb-1"></div><div class="skeleton skeleton-text-sm w-24"></div></div></div></td><td><div class="skeleton skeleton-text w-28"></div></td><td><div class="skeleton skeleton-text w-16"></div></td><td><div class="skeleton skeleton-text w-20"></div></td><td></td></tr>
+                </tbody>
+            </table>
+            <div id="emptyState" class="hidden text-center py-12 opacity-50">
+                <div class="text-4xl mb-2">👥</div>
+                <p data-i18n="no_results">Никого не найдено</p>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        <div id="paginationContainer"></div>
+
+    </main>
+
+    <div id="footer-placeholder"></div>
+
+    <!-- Add Modal -->
+    <dialog id="addModal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4" data-i18n="add_team_member">Добавить члена команды</h3>
+
+            <form id="addForm" onsubmit="saveNewPerson(event)">
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text font-medium" data-i18n="spiritual_name">Духовное имя</span>
+                        <span class="label-text-alt opacity-50" data-i18n="optional">необязательно</span>
+                    </label>
+                    <input type="text" name="spiritual_name" class="input input-bordered">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text font-medium" data-i18n="first_name">Имя</span>
+                        </label>
+                        <input type="text" name="first_name" class="input input-bordered">
+                    </div>
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text font-medium" data-i18n="last_name">Фамилия</span>
+                        </label>
+                        <input type="text" name="last_name" class="input input-bordered">
+                    </div>
+                </div>
+
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text font-medium">Email *</span>
+                    </label>
+                    <input type="email" name="email" class="input input-bordered" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text font-medium" data-i18n="phone">Телефон</span>
+                            <span class="label-text-alt opacity-50" data-i18n="optional">необязательно</span>
+                        </label>
+                        <input type="tel" name="phone" class="input input-bordered">
+                    </div>
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text font-medium">Telegram</span>
+                            <span class="label-text-alt opacity-50" data-i18n="optional">необязательно</span>
+                        </label>
+                        <input type="text" name="telegram_username" class="input input-bordered" placeholder="username">
+                    </div>
+                </div>
+
+                <div class="form-control mb-4">
+                    <label class="label cursor-pointer justify-start gap-3">
+                        <input type="checkbox" name="is_team_member" class="checkbox checkbox-primary" checked>
+                        <span class="label-text" data-i18n="is_team_member">Член команды</span>
+                    </label>
+                </div>
+
+                <div class="modal-action">
+                    <button type="button" class="btn btn-ghost" onclick="closeAddModal()" data-i18n="cancel">Отмена</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="add">Добавить</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <script src="../js/config.js?v=4"></script>
+    <script src="../js/auth-check.js?v=7"></script>
+    <script src="../js/cache.js?v=1"></script>
+    <script src="../js/utils.js?v=4"></script>
+    <script src="../js/translit.js"></script>
+    <script src="../js/auto-translate.js"></script>
+    <script src="../js/date-utils.js?v=3"></script>
+    <script src="../js/layout.js?v=28"></script>
+    <script src="../js/vaishnavas-utils.js?v=2"></script>
+    <script>
+        const V = VaishnavasUtils;
+        let people = [];
+        let stays = {};
+        let totalCount = 0;
+        const state = { currentFilter: 'all', searchQuery: '', sortField: 'name', sortDirection: 'asc', currentPage: 1 };
+        const today = DateUtils.toISO(new Date());
+
+        async function init() {
+            await Layout.init({ module: 'kitchen', menuId: 'team', itemId: 'vaishnavas_team' });
+
+            Layout.showLoader();
+            // Сначала загружаем stays, потом people - чтобы при рендеринге stays был уже заполнен
+            await loadStaysData();
+            await loadPeople();
+            Layout.hideLoader();
+
+            V.setupSearch(state, loadPeople);
+            V.setupFilters(state, loadPeople);
+            V.updateSortIcons(state);
+        }
+
+        async function loadPeople() {
+            let query = Layout.db
+                .from('vaishnavas')
+                .select('id, first_name, last_name, spiritual_name, phone, email, country, spiritual_teacher, is_team_member, photo_url, service, departments(id, name_ru, name_en, name_hi, color)', { count: 'exact' })
+                .eq('is_deleted', false)
+                .eq('is_team_member', true);
+
+            query = V.applyServerSearch(query, state.searchQuery);
+
+            // Сортировка по департаментам и статусу пребывания делается на клиенте, остальное - на сервере
+            if (state.sortField !== 'department' && state.sortField !== 'stay_status') {
+                query = V.applyServerSort(query, state);
+            }
+
+            const from = (state.currentPage - 1) * V.PAGE_SIZE;
+            const to = from + V.PAGE_SIZE - 1;
+            query = query.range(from, to);
+
+            const { data, error, count } = await query;
+            if (error) { Layout.handleError(error, 'Загрузка данных'); return; }
+            people = data || [];
+            totalCount = count || 0;
+            renderPeople();
+        }
+
+        async function loadStaysData() {
+            stays = await V.loadStays();
+        }
+
+        function toggleSort(field) {
+            V.toggleSort(state, field, loadPeople);
+        }
+
+        function updateCounts() {
+            document.getElementById('countAll').textContent = totalCount;
+            document.getElementById('countPresent').textContent = people.filter(p => V.isPresent(p.id, stays, today)).length;
+        }
+
+        function getStayStatus(personId) {
+            const personStays = stays[personId] || [];
+
+            // Проверяем присутствие сейчас
+            const currentStay = personStays.find(s => s.start_date <= today && s.end_date >= today);
+            if (currentStay) {
+                return `<span class="text-success font-medium">${t('currently_in_srsk')}</span>`;
+            }
+
+            // Проверяем будущие записи
+            const futureStays = personStays.filter(s => s.start_date > today).sort((a, b) => a.start_date.localeCompare(b.start_date));
+            if (futureStays.length > 0) {
+                const nextStay = futureStays[0];
+                const date = DateUtils.parseDate(nextStay.start_date);
+                const formatted = date.toLocaleDateString(Layout.currentLang === 'hi' ? 'hi-IN' : Layout.currentLang === 'en' ? 'en-US' : 'ru-RU', { day: 'numeric', month: 'short' });
+
+                // Если есть информация о ретрите (для гостей)
+                if (nextStay.retreat) {
+                    const retreatName = Layout.getName(nextStay.retreat);
+                    return `${t('coming_for_retreat')} ${retreatName} ${formatted}`;
+                }
+
+                // Для команды
+                return `${t('plans_to_come')} ${formatted}`;
+            }
+
+            return '';
+        }
+
+        function renderTeamRow(person, opts = {}) {
+            const e = Layout.escapeHtml;
+            const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || Layout.t('no_name');
+            const spiritualName = person.spiritual_name || '';
+            const dept = person.departments;
+            const present = opts.isPresent || false;
+
+            // Основное имя для отображения
+            const mainName = spiritualName || displayName;
+            const subName = spiritualName ? displayName : '';
+
+            // Бейдж присутствия убран - статус отображается в колонке "В ШРСК"
+            let badgeHtml = '';
+
+            // Аватар: фото или инициалы
+            const photoUrl = person.photo_url;
+            const initials = e((spiritualName || displayName)
+                .split(' ')
+                .map(w => w[0])
+                .join('')
+                .substring(0, 2)
+                .toUpperCase());
+
+            const avatarHtml = photoUrl
+                ? `<img src="${e(photoUrl)}" class="w-10 h-10 rounded-full object-cover cursor-pointer avatar-photo" alt="" data-initials="${initials}" data-photo-url="${e(photoUrl)}" onerror="replacePhotoWithPlaceholder(this)">`
+                : `<div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold">${initials}</div>`;
+
+            // Департамент и служение
+            let deptHtml = '—';
+            if (dept) {
+                const deptName = Layout.getName(dept);
+                const service = person.service ? `<div class="text-xs opacity-60">${e(person.service)}</div>` : '';
+                deptHtml = `<div><span class="badge badge-xs" style="background-color: ${e(dept.color)}20; color: ${e(dept.color)}; border-color: ${e(dept.color)}">${e(deptName)}</span>${service}</div>`;
+            } else if (person.service) {
+                deptHtml = `<div class="text-sm opacity-60">${e(person.service)}</div>`;
+            }
+
+            return `
+                <tr class="hover">
+                    <td>
+                        <div class="flex items-center gap-3">
+                            ${avatarHtml}
+                            <div class="min-w-0">
+                                <div class="font-medium text-base">${e(mainName)}${badgeHtml}</div>
+                                ${subName ? `<div class="text-xs opacity-60">${e(subName)}</div>` : ''}
+                            </div>
+                        </div>
+                    </td>
+                    <td>${deptHtml}</td>
+                    <td class="text-sm">${getStayStatus(person.id)}</td>
+                    <td class="truncate">${e(person.spiritual_teacher || '')}</td>
+                    <td class="truncate text-sm opacity-60">${e(person.phone || '')}</td>
+                    <td>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function renderPeople() {
+            const tbody = document.getElementById('peopleTable');
+            const emptyState = document.getElementById('emptyState');
+            updateCounts();
+
+            // Для фильтра "present" дополнительно фильтруем клиентски
+            let filtered = people;
+            if (state.currentFilter === 'present') {
+                filtered = people.filter(p => V.isPresent(p.id, stays, today));
+            }
+
+            // Клиентская сортировка по департаментам
+            if (state.sortField === 'department') {
+                filtered = [...filtered].sort((a, b) => {
+                    const deptA = a.departments ? Layout.getName(a.departments).toLowerCase() : '';
+                    const deptB = b.departments ? Layout.getName(b.departments).toLowerCase() : '';
+
+                    if (deptA < deptB) return state.sortDirection === 'asc' ? -1 : 1;
+                    if (deptA > deptB) return state.sortDirection === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            // Клиентская сортировка по статусу пребывания
+            if (state.sortField === 'stay_status') {
+                filtered = [...filtered].sort((a, b) => {
+                    const getStayPriority = (personId) => {
+                        const personStays = stays[personId] || [];
+                        const currentStay = personStays.find(s => s.start_date <= today && s.end_date >= today);
+                        if (currentStay) return { priority: 1, date: '' };
+
+                        const futureStays = personStays.filter(s => s.start_date > today).sort((x, y) => x.start_date.localeCompare(y.start_date));
+                        if (futureStays.length > 0) return { priority: 2, date: futureStays[0].start_date };
+
+                        return { priority: 3, date: '' };
+                    };
+
+                    const statusA = getStayPriority(a.id);
+                    const statusB = getStayPriority(b.id);
+
+                    // Сначала сравниваем по приоритету
+                    if (statusA.priority !== statusB.priority) {
+                        return state.sortDirection === 'asc'
+                            ? statusA.priority - statusB.priority
+                            : statusB.priority - statusA.priority;
+                    }
+
+                    // Для одинакового приоритета 2 (планирующие) - сортируем по дате
+                    if (statusA.priority === 2) {
+                        return state.sortDirection === 'asc'
+                            ? statusA.date.localeCompare(statusB.date)
+                            : statusB.date.localeCompare(statusA.date);
+                    }
+
+                    return 0;
+                });
+            }
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                document.getElementById('paginationContainer')?.innerHTML && (document.getElementById('paginationContainer').innerHTML = '');
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            tbody.innerHTML = filtered.map(person =>
+                renderTeamRow(person, {
+                    isPresent: V.isPresent(person.id, stays, today)
+                })
+            ).join('');
+
+            V.renderPagination('paginationContainer', state, totalCount, loadPeople);
+        }
+
+        function openAddModal() { V.openAddModal(); }
+        function closeAddModal() { V.closeAddModal(); }
+        function saveNewPerson(event) { V.saveNewPerson(event); }
+
+        window.onLanguageChange = function(lang) {
+            loadPeople();
+            Layout.updateAllTranslations();
+        };
+
+        init();
+    </script>
+</body>
+</html>
