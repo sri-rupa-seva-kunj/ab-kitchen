@@ -212,15 +212,8 @@
                 // Успех!
                 showState('success-state');
 
-                // Получаем информацию о пользователе для редиректа
                 const { data: { session } } = await db.auth.getSession();
                 if (session) {
-                    const { data: vaishnava } = await db
-                        .from('vaishnavas')
-                        .select('is_team')
-                        .eq('user_id', session.user.id)
-                        .single();
-
                     setTimeout(() => {
                         window.location.href = window.abkUrl('/');
                     }, 1500);
@@ -239,25 +232,63 @@
             }
         }
 
-        // Инициализация
-        async function init() {
-            // Даём время Supabase обработать токены из URL
-            await new Promise(resolve => setTimeout(resolve, 500));
+        async function establishSessionFromUrl() {
+            const searchParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.slice(1));
+            const urlError = hashParams.get('error_description')
+                || searchParams.get('error_description');
 
-            // Проверяем сессию
-            const { data: { session }, error } = await db.auth.getSession();
+            if (urlError) throw new Error(urlError);
 
-            if (error || !session) {
-                showState('error-state');
-                return;
+            const { data: currentData, error: currentError } = await db.auth.getSession();
+            if (!currentError && currentData?.session) {
+                return currentData.session;
             }
 
-            // Показываем форму
-            showState('form-state');
+            const code = searchParams.get('code');
+            if (code) {
+                const { data, error } = await db.auth.exchangeCodeForSession(code);
+                if (error) throw error;
+                if (data?.session) return data.session;
+            }
 
-            // Обработчики
-            document.getElementById('reset-form').addEventListener('submit', handleSubmit);
-            document.getElementById('toggle-password').addEventListener('click', togglePassword);
+            const accessToken = hashParams.get('access_token');
+            const refreshToken = hashParams.get('refresh_token');
+            if (accessToken && refreshToken) {
+                const { data, error } = await db.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken
+                });
+                if (error) throw error;
+                if (data?.session) return data.session;
+            }
+
+            if (currentError) throw currentError;
+
+            const { data: { session }, error } = await db.auth.getSession();
+            if (error) throw error;
+            return session;
+        }
+
+        // Инициализация
+        async function init() {
+            try {
+                const session = await establishSessionFromUrl();
+                if (!session) {
+                    showState('error-state');
+                    return;
+                }
+
+                // Показываем форму
+                showState('form-state');
+
+                // Обработчики
+                document.getElementById('reset-form').addEventListener('submit', handleSubmit);
+                document.getElementById('toggle-password').addEventListener('click', togglePassword);
+            } catch (error) {
+                console.error('Password session error:', error);
+                showState('error-state');
+            }
         }
 
         init();
