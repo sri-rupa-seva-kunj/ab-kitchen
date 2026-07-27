@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = Deno.env.get('SITE_URL') ?? '';
+const SITE_URL = (Deno.env.get('SITE_URL') ?? '').replace(/\/$/, '');
+const ALLOWED_ORIGIN = SITE_URL ? new URL(SITE_URL).origin : '';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -9,7 +10,7 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req: Request) => {
-  if (!ALLOWED_ORIGIN) {
+  if (!SITE_URL) {
     return new Response(
       JSON.stringify({ error: 'SITE_URL is not configured' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
@@ -115,7 +116,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Отправляем invite (создаст пользователя если не существует)
-    const redirectUrl = `${ALLOWED_ORIGIN}/guest-portal/auth-callback/`;
+    const redirectUrl = `${SITE_URL}/guest-portal/auth-callback/`;
 
     const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       redirectTo: redirectUrl,
