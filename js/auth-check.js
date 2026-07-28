@@ -64,6 +64,13 @@
             return;
         }
 
+        // AB Kitchen — закрытое приложение только для администраторов.
+        if (!vaishnava.is_superuser) {
+            await db.auth.signOut();
+            window.location.href = window.abkUrl('/login.html') + '?reason=no_access';
+            return;
+        }
+
         // Загрузить права пользователя одним запросом через SQL функцию
         let permissions = [];
 
@@ -106,24 +113,6 @@
             }
             return window.currentUser?.is_superuser || window.currentUser?.permissions.includes(permCode);
         };
-
-        const kitchenPermissions = new Set([
-            'view_menu', 'edit_menu', 'view_menu_templates', 'edit_menu_templates',
-            'view_recipes', 'create_recipe', 'edit_recipe', 'delete_recipe',
-            'view_products', 'edit_products', 'view_kitchen_dictionaries',
-            'edit_kitchen_dictionaries', 'view_stock', 'view_stock_settings',
-            'edit_stock_settings', 'view_requests', 'create_request', 'edit_request',
-            'delete_request', 'issue_stock', 'receive_stock', 'conduct_inventory',
-            'view_team',
-            'manage_users'
-        ]);
-        const hasKitchenAccess = vaishnava.is_superuser || permissions.some(code => kitchenPermissions.has(code));
-
-        if (!hasKitchenAccess) {
-            await db.auth.signOut();
-            window.location.href = window.abkUrl('/login.html') + '?reason=no_access';
-            return;
-        }
 
         debug('✅ User authenticated');
         debug('📋 Permissions loaded:', permissions.length);

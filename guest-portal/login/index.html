@@ -217,7 +217,7 @@
             portal_send_again: { ru: 'Отправить ещё раз', en: 'Send again', hi: 'फिर से भेजें' },
             error_invalid_credentials: { ru: 'Неверный email или пароль', en: 'Invalid email or password', hi: 'गलत ईमेल या पासवर्ड' },
             error_user_not_found: { ru: 'Пользователь не найден', en: 'User not found', hi: 'उपयोगकर्ता नहीं मिला' },
-            error_no_access: { ru: 'Для этого аккаунта не назначена роль AB Kitchen', en: 'This account has no AB Kitchen role', hi: 'इस खाते में AB Kitchen की भूमिका नहीं है' },
+            error_no_access: { ru: 'Для этого аккаунта не разрешён административный доступ к AB Kitchen', en: 'This account has no AB Kitchen administrator access', hi: 'इस खाते को AB Kitchen व्यवस्थापक पहुँच नहीं है' },
             error_not_registered: { ru: 'Этот email не зарегистрирован. Пожалуйста, зарегистрируйтесь.', en: 'This email is not registered. Please sign up.', hi: 'यह ईमेल पंजीकृत नहीं है। कृपया साइन अप करें।' },
             error_account_disabled: { ru: 'Ваш аккаунт деактивирован', en: 'Your account is disabled', hi: 'आपका खाता निष्क्रिय है' },
             error_send_failed: { ru: 'Не удалось отправить ссылку. Попробуйте позже.', en: 'Failed to send link. Please try again.', hi: 'लिंक भेजने में विफल। कृपया पुनः प्रयास करें।' },
@@ -443,34 +443,9 @@
             }
         }
 
-        // Проверка доступа именно к кухонному приложению.
+        // В AB Kitchen допускаются только администраторы с полным доступом.
         async function checkHasOperationalPermissions(userId, isSuperuser) {
-            if (isSuperuser) return true;
-
-            try {
-                const { data: userPerms, error } = await db
-                    .rpc('get_user_permissions', { p_user_id: userId });
-
-                if (error) {
-                    console.error('[Login] Permissions check error:', error);
-                    return false;
-                }
-
-                const permissions = userPerms ? userPerms.map(p => p.permission_code) : [];
-                const kitchenPermissions = new Set([
-                    'view_menu', 'edit_menu', 'view_menu_templates', 'edit_menu_templates',
-                    'view_recipes', 'create_recipe', 'edit_recipe', 'delete_recipe',
-                    'view_products', 'edit_products', 'view_kitchen_dictionaries',
-                    'edit_kitchen_dictionaries', 'view_stock', 'view_stock_settings',
-                    'edit_stock_settings', 'view_requests', 'create_request', 'edit_request',
-                    'delete_request', 'issue_stock', 'receive_stock', 'conduct_inventory',
-                    'manage_users'
-                ]);
-                return permissions.some(code => kitchenPermissions.has(code));
-            } catch (e) {
-                console.error('[Login] Permissions check exception:', e);
-                return false;
-            }
+            return isSuperuser === true;
         }
 
         // Обработка формы

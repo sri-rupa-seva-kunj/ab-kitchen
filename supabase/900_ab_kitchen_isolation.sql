@@ -237,9 +237,8 @@ AS $$
         WHERE user_id = p_user_id
           AND is_superuser = true
           AND is_active = true
+          AND approval_status = 'approved'
           AND is_deleted = false
-    ) OR EXISTS (
-        SELECT 1 FROM superusers WHERE user_id = p_user_id
     );
 $$;
 
@@ -251,36 +250,7 @@ SECURITY DEFINER
 SET search_path = public
 SET row_security = off
 AS $$
-    SELECT public.abk_is_superuser(user_uuid)
-    OR (
-        (
-            EXISTS (
-                SELECT 1
-                FROM user_roles ur
-                JOIN role_permissions rp ON rp.role_id = ur.role_id
-                JOIN permissions p ON p.id = rp.permission_id
-                WHERE ur.user_id = user_uuid
-                  AND COALESCE(ur.is_active, true)
-                  AND p.code = perm_code
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM user_permissions up
-                JOIN permissions p ON p.id = up.permission_id
-                WHERE up.user_id = user_uuid
-                  AND up.is_granted = true
-                  AND p.code = perm_code
-            )
-        )
-        AND NOT EXISTS (
-            SELECT 1
-            FROM user_permissions up
-            JOIN permissions p ON p.id = up.permission_id
-            WHERE up.user_id = user_uuid
-              AND up.is_granted = false
-              AND p.code = perm_code
-        )
-    );
+    SELECT public.abk_is_superuser(user_uuid);
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_user_permissions(p_user_id UUID)
@@ -339,7 +309,6 @@ DECLARE
     auth_email TEXT;
     person_id UUID;
     linked_user UUID;
-    observer_role_id UUID;
 BEGIN
     IF auth_id IS NULL THEN
         RETURN QUERY SELECT false, NULL::UUID, 'no_session'::TEXT;
@@ -368,35 +337,15 @@ BEGIN
 
         UPDATE vaishnavas
            SET user_id = auth_id,
+               is_superuser = true,
                updated_at = NOW()
          WHERE id = person_id;
     END IF;
 
-    -- Новый пользователь не должен попадать в тупик «роль не назначена».
-    -- До явного назначения администратором выдаём минимальную роль просмотра.
-    IF NOT public.abk_is_superuser(auth_id)
-       AND NOT EXISTS (
-           SELECT 1
-             FROM user_roles
-            WHERE user_id = auth_id
-              AND COALESCE(is_active, true)
-       )
-    THEN
-        SELECT r.id
-          INTO observer_role_id
-          FROM roles r
-          JOIN modules m ON m.id = r.module_id
-         WHERE m.code = 'kitchen'
-           AND r.code = 'observer'
-         LIMIT 1;
-
-        IF observer_role_id IS NOT NULL THEN
-            INSERT INTO user_roles (user_id, role_id, is_active)
-            VALUES (auth_id, observer_role_id, true)
-            ON CONFLICT (user_id, role_id)
-            DO UPDATE SET is_active = true, expires_at = NULL;
-        END IF;
-    END IF;
+    UPDATE vaishnavas
+       SET is_superuser = true,
+           updated_at = NOW()
+     WHERE id = person_id;
 
     RETURN QUERY SELECT true, person_id, NULL::TEXT;
 END;

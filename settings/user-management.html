@@ -103,37 +103,16 @@
                         <input type="checkbox" id="modalIsActive" class="checkbox checkbox-sm" disabled>
                         <span class="label-text" data-i18n="settings_active">Активен</span>
                     </label>
-                    <label class="label cursor-pointer justify-start gap-2">
-                        <input type="checkbox" id="modalIsSuperuser" class="checkbox checkbox-sm">
-                        <span class="label-text" data-i18n="settings_superuser">Суперпользователь</span>
-                    </label>
                 </div>
 
-                <div class="divider" data-i18n="settings_roles">Роли</div>
-
-                <!-- Роли -->
-                <div id="rolesContainer" class="space-y-2 max-h-60 overflow-y-auto">
-                    <!-- Роли загружаются динамически -->
-                </div>
-
-                <div class="divider" data-i18n="settings_custom_permissions">Индивидуальные права</div>
-
-                <!-- Индивидуальные права -->
-                <div class="flex gap-2">
-                    <button class="btn btn-sm btn-outline" onclick="openPermissionsModal()">
-                        <span data-i18n="settings_configure_permissions">Настроить права</span>
-                    </button>
-                </div>
-
-                <div id="customPermissionsContainer" class="text-sm">
-                    <!-- Индивидуальные права загружаются динамически -->
+                <div class="alert alert-info">
+                    <span><strong data-i18n="role_admin">Администратор</strong> — полный доступ к AB Kitchen</span>
                 </div>
             </div>
 
             <div class="modal-action">
                 <button class="btn btn-error mr-auto" onclick="blockUser()" data-i18n="settings_block">Заблокировать</button>
-                <button class="btn" onclick="closeManageModal()" data-i18n="cancel">Отмена</button>
-                <button class="btn btn-primary" onclick="saveUserChanges()" data-i18n="save">Сохранить</button>
+                <button class="btn" onclick="closeManageModal()" data-i18n="settings_close">Закрыть</button>
             </div>
         </div>
         <form method="dialog" class="modal-backdrop">
@@ -430,7 +409,7 @@
                     </td>
                     <td>
                         <span class="font-bold">${displayName}</span>
-                        ${user.is_superuser ? '<span class="badge badge-warning badge-sm">Superuser</span>' : ''}
+                        ${user.is_superuser ? '<span class="badge badge-warning badge-sm">Администратор</span>' : ''}
                     </td>
                     <td>${safeEmail}</td>
                     <td>
@@ -441,7 +420,9 @@
                     </td>
                     <td>
                         <div class="flex flex-wrap gap-1">
-                        ${user.roles.length > 0
+                        ${user.is_superuser
+                            ? '<span class="badge badge-sm badge-primary">Администратор</span>'
+                            : user.roles.length > 0
                             ? user.roles.map(r => `<span class="badge badge-sm badge-outline">${r.roles.name_ru}</span>`).join('')
                             : `<span class="text-xs opacity-50">${t('no_roles')}</span>`
                         }
@@ -535,26 +516,13 @@
 
                 if (error) throw error;
 
-                // Если одобрили — назначить безопасную роль только для просмотра.
+                // В AB Kitchen каждый одобренный аккаунт является администратором.
                 if (approvalAction === 'approve') {
                     const user = allUsers.find(u => u.id === currentUserId);
-                    if (user.user_type === 'guest' && user.user_id) {
-                        const { data: observerRole } = await db
-                            .from('roles')
-                            .select('id')
-                            .eq('code', 'observer')
-                            .single();
-
-                        if (observerRole) {
-                            await db.from('user_roles').upsert({
-                                user_id: user.user_id,
-                                role_id: observerRole.id,
-                                is_active: true,
-                                granted_by: window.currentUser.id,
-                                granted_at: new Date().toISOString()
-                            }, { onConflict: 'user_id,role_id' });
-                        }
-                    }
+                    await db
+                        .from('vaishnavas')
+                        .update({ is_superuser: true })
+                        .eq('id', user.id);
                 }
 
                 closeApprovalModal();
@@ -587,122 +555,12 @@
             document.getElementById('modalUserEmail').textContent = user.email;
             document.getElementById('modalUserType').textContent = t('type_' + (user.user_type || 'guest'));
             document.getElementById('modalIsActive').checked = user.is_active;
-            document.getElementById('modalIsSuperuser').checked = user.is_superuser;
-
-            // В AB Kitchen все роли относятся к модулю кухни.
-            const { data: allRoles, error: rolesError } = await db
-                .from('roles')
-                .select('id, code, name_ru, description_ru')
-                .order('sort_order');
-
-            if (rolesError) {
-                Layout.showNotification(t('error') + ': ' + rolesError.message, 'error');
-                return;
-            }
-
-            // Загрузить роли пользователя
-            const { data: userRoles } = await db
-                .from('user_roles')
-                .select('role_id')
-                .eq('user_id', user.user_id)
-                .eq('is_active', true);
-
-            const userRoleIds = userRoles ? userRoles.map(r => r.role_id) : [];
-
-            // Отрисовать роли
-            const rolesContainer = document.getElementById('rolesContainer');
-            rolesContainer.innerHTML = (allRoles || []).map(role => `
-                <label class="label cursor-pointer justify-start gap-3 py-2 px-3 rounded-lg hover:bg-base-200 transition-colors">
-                    <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
-                           data-role-id="${role.id}"
-                           ${userRoleIds.includes(role.id) ? 'checked' : ''}>
-                    <div class="flex-1">
-                        <div class="font-medium">${role.name_ru}</div>
-                        <div class="text-xs opacity-60">${role.description_ru || ''}</div>
-                    </div>
-                </label>
-            `).join('');
-
-            // Загрузить индивидуальные права
-            const { data: customPerms } = await db
-                .from('user_permissions')
-                .select(`
-                    is_granted,
-                    permissions!inner (
-                        code,
-                        name_ru
-                    )
-                `)
-                .eq('user_id', user.user_id);
-
-            const customPermsContainer = document.getElementById('customPermissionsContainer');
-            if (customPerms && customPerms.length > 0) {
-                customPermsContainer.innerHTML = '<div class="space-y-1">' + customPerms.map(p => `
-                    <div class="flex items-center gap-2">
-                        <span class="badge ${p.is_granted ? 'badge-success' : 'badge-error'} badge-sm">
-                            ${p.is_granted ? '+' : '−'}
-                        </span>
-                        <span class="text-sm">${p.permissions.name_ru}</span>
-                    </div>
-                `).join('') + '</div>';
-            } else {
-                customPermsContainer.innerHTML = `<p class="text-sm opacity-50">${t('no_custom_permissions')}</p>`;
-            }
 
             document.getElementById('manageUserModal').showModal();
         }
 
         function closeManageModal() {
             document.getElementById('manageUserModal').close();
-        }
-
-        // Сохранить изменения пользователя
-        async function saveUserChanges() {
-            try {
-                const user = allUsers.find(u => u.user_id === currentUserId);
-                if (!user) {
-                    Layout.showNotification(t('user_not_found'), 'error');
-                    return;
-                }
-
-                const isSuperuser = document.getElementById('modalIsSuperuser').checked;
-
-                // Обновить статус суперпользователя в vaishnavas
-                await db
-                    .from('vaishnavas')
-                    .update({ is_superuser: isSuperuser })
-                    .eq('id', user.id);
-
-                // Обновить роли
-                const checkedRoles = Array.from(document.querySelectorAll('#rolesContainer input:checked'))
-                    .map(cb => cb.dataset.roleId);
-
-                // Деактивировать все роли
-                await db
-                    .from('user_roles')
-                    .update({ is_active: false })
-                    .eq('user_id', user.user_id);
-
-                // Добавить выбранные роли (batch upsert)
-                if (checkedRoles.length > 0) {
-                    const rolesData = checkedRoles.map(roleId => ({
-                        user_id: user.user_id,
-                        role_id: roleId,
-                        is_active: true,
-                        granted_by: window.currentUser.id,
-                        granted_at: new Date().toISOString()
-                    }));
-                    await db.from('user_roles').upsert(rolesData, { onConflict: 'user_id,role_id' });
-                }
-
-                closeManageModal();
-                loadCounts(); // Обновить счётчики в табах
-                loadUsers({ tab: currentTab !== 'all' ? currentTab : null });
-                Layout.showNotification(t('changes_saved'), 'success');
-            } catch (err) {
-                console.error('Save error:', err);
-                Layout.showNotification(t('error_saving') + ': ' + err.message, 'error');
-            }
         }
 
         // Заблокировать пользователя (с optimistic update)
