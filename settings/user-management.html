@@ -456,7 +456,7 @@
                                 `
                                 : `<button class="btn btn-xs btn-primary" onclick="openManageModal('${user.id}')">${t('manage')}</button>`
                             }
-                            ${!user.user_id && user.email
+                            ${user.email && user.is_active
                                 ? `<button class="btn btn-xs btn-outline btn-secondary" onclick="sendInvite('${user.id}', '${safeEmail.replace(/'/g, "\\'")}')">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -535,23 +535,24 @@
 
                 if (error) throw error;
 
-                // Если одобрили - назначить дефолтную роль Guest для гостей
+                // Если одобрили — назначить безопасную роль только для просмотра.
                 if (approvalAction === 'approve') {
                     const user = allUsers.find(u => u.id === currentUserId);
                     if (user.user_type === 'guest' && user.user_id) {
-                        const { data: guestRole } = await db
+                        const { data: observerRole } = await db
                             .from('roles')
                             .select('id')
-                            .eq('code', 'guest')
+                            .eq('code', 'observer')
                             .single();
 
-                        if (guestRole) {
-                            await db.from('user_roles').insert({
+                        if (observerRole) {
+                            await db.from('user_roles').upsert({
                                 user_id: user.user_id,
-                                role_id: guestRole.id,
+                                role_id: observerRole.id,
                                 is_active: true,
-                                assigned_by: window.currentUser.id
-                            });
+                                granted_by: window.currentUser.id,
+                                granted_at: new Date().toISOString()
+                            }, { onConflict: 'user_id,role_id' });
                         }
                     }
                 }
@@ -588,12 +589,16 @@
             document.getElementById('modalIsActive').checked = user.is_active;
             document.getElementById('modalIsSuperuser').checked = user.is_superuser;
 
-            // Загрузить все кросс-модульные роли
-            const { data: allRoles } = await db
+            // В AB Kitchen все роли относятся к модулю кухни.
+            const { data: allRoles, error: rolesError } = await db
                 .from('roles')
                 .select('id, code, name_ru, description_ru')
-                .is('module_id', null)
                 .order('sort_order');
+
+            if (rolesError) {
+                Layout.showNotification(t('error') + ': ' + rolesError.message, 'error');
+                return;
+            }
 
             // Загрузить роли пользователя
             const { data: userRoles } = await db
@@ -606,7 +611,7 @@
 
             // Отрисовать роли
             const rolesContainer = document.getElementById('rolesContainer');
-            rolesContainer.innerHTML = allRoles.map(role => `
+            rolesContainer.innerHTML = (allRoles || []).map(role => `
                 <label class="label cursor-pointer justify-start gap-3 py-2 px-3 rounded-lg hover:bg-base-200 transition-colors">
                     <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
                            data-role-id="${role.id}"
@@ -684,8 +689,8 @@
                         user_id: user.user_id,
                         role_id: roleId,
                         is_active: true,
-                        assigned_by: window.currentUser.id,
-                        assigned_at: new Date().toISOString()
+                        granted_by: window.currentUser.id,
+                        granted_at: new Date().toISOString()
                     }));
                     await db.from('user_roles').upsert(rolesData, { onConflict: 'user_id,role_id' });
                 }
@@ -736,11 +741,10 @@
         async function openPermissionsModal() {
             if (!currentUserId) return;
 
-            // Загрузить все глобальные права (кросс-модульные)
+            // В AB Kitchen все доступные права относятся к модулю кухни.
             const { data: allPerms, error: permsError } = await db
                 .from('permissions')
                 .select('id, code, name_ru, category')
-                .is('module_id', null)
                 .order('category, name_ru');
 
             if (permsError || !allPerms || allPerms.length === 0) {

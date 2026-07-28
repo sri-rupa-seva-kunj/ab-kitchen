@@ -72,8 +72,8 @@ Deno.serve(async (req: Request) => {
     if (!isSuperuser) {
       // Проверяем permission manage_users
       const { data: hasPermission } = await supabaseAdmin.rpc('has_permission', {
-        p_user_id: user.id,
-        p_permission_code: 'manage_users'
+        user_uuid: user.id,
+        perm_code: 'manage_users'
       });
 
       if (!hasPermission) {
@@ -94,7 +94,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Проверяем что vaishnava существует и не имеет user_id
+    // Проверяем, что профиль существует и приглашение отправляется именно
+    // на сохранённый в нём адрес.
     const { data: vaishnava, error: vaishError } = await supabaseAdmin
       .from('vaishnavas')
       .select('id, email, user_id, spiritual_name, first_name')
@@ -108,17 +109,93 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (vaishnava.user_id) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const profileEmail = String(vaishnava.email ?? '').trim().toLowerCase();
+
+    if (!profileEmail || normalizedEmail !== profileEmail) {
       return new Response(
-        JSON.stringify({ error: 'User already has an account', alreadyHasAccount: true }),
+        JSON.stringify({ error: 'Email does not match the selected profile' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Отправляем invite (создаст пользователя если не существует)
     const redirectUrl = `${SITE_URL}/guest-portal/auth-callback/`;
 
-    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    // Supabase не позволяет повторно пригласить уже созданного пользователя.
+    // Для связанного/подтверждённого аккаунта отправляем новую recovery-ссылку.
+    if (vaishnava.user_id) {
+      const { error: recoveryError } = await supabaseAdmin.auth.resetPasswordForEmail(
+        normalizedEmail,
+        { redirectTo: redirectUrl }
+      );
+
+      if (recoveryError) {
+        console.error('Recovery link error:', recoveryError);
+        return new Response(
+          JSON.stringify({ error: recoveryError.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, mode: 'recovery', message: 'Access link sent successfully' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Истёкшее приглашение оставляет в Auth неподтверждённую запись. Удаляем
+    // только такую неподтверждённую и непривязанную запись, затем создаём
+    // полноценное новое приглашение.
+    const { data: usersPage, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000
+    });
+
+    if (usersError) {
+      console.error('List users error:', usersError);
+      return new Response(
+        JSON.stringify({ error: usersError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const existingAuthUser = usersPage.users.find(
+      existing => existing.email?.trim().toLowerCase() === normalizedEmail
+    );
+
+    if (existingAuthUser?.email_confirmed_at) {
+      const { error: recoveryError } = await supabaseAdmin.auth.resetPasswordForEmail(
+        normalizedEmail,
+        { redirectTo: redirectUrl }
+      );
+
+      if (recoveryError) {
+        console.error('Recovery link error:', recoveryError);
+        return new Response(
+          JSON.stringify({ error: recoveryError.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, mode: 'recovery', message: 'Access link sent successfully' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (existingAuthUser) {
+      const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(existingAuthUser.id);
+      if (deleteError) {
+        console.error('Delete stale invite error:', deleteError);
+        return new Response(
+          JSON.stringify({ error: deleteError.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Отправляем новое приглашение (создаст пользователя, если его ещё нет).
+    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
       redirectTo: redirectUrl,
       data: {
         vaishnava_id: vaishnavId,
@@ -135,7 +212,11 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Invite sent successfully' }),
+      JSON.stringify({
+        success: true,
+        mode: existingAuthUser ? 'reinvite' : 'invite',
+        message: 'Invite sent successfully'
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
